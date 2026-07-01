@@ -144,21 +144,41 @@ fun StartScreen(innerPadding: PaddingValues) {
 fun getPrivateIpAddress(): String? {
     try {
         val interfaces = NetworkInterface.getNetworkInterfaces()
+        // We'll store a backup IP just in case we don't find a matching Wi-Fi name
+        var fallbackIp: String? = null
+
         while (interfaces.hasMoreElements()) {
             val networkInterface = interfaces.nextElement()
-            // Skip loopback interfaces like localhost (127.0.0.1)
+
+            // Skip disabled, virtual loopback, or simulation interfaces
             if (networkInterface.isLoopback || !networkInterface.isUp) continue
 
+            val interfaceName = networkInterface.name.lowercase()
             val addresses = networkInterface.inetAddresses
+
             while (addresses.hasMoreElements()) {
                 val address = addresses.nextElement()
-                // Return only valid local IPv4 addresses (e.g., 192.168.x.x)
-                if (!address.isLoopbackAddress && address is Inet4Address) {
-                    return address.hostAddress
-                }
 
+                // We only care about standard IPv4 configurations
+                if (!address.isLoopbackAddress && address is Inet4Address) {
+                    val ipCandidate = address.hostAddress ?: continue
+
+                    // 1. Highest Priority: Target interfaces explicitly named as Wi-Fi adapters
+                    if (interfaceName.contains("wlan") || interfaceName.contains("p2p")) {
+                        return ipCandidate
+                    }
+
+                    // 2. Secondary Priority: Target your explicit home subnet footprint
+                    if (ipCandidate.startsWith("192.168.")) {
+                        return ipCandidate
+                    }
+
+                    // Keep any other valid private IP as a fallback (like 10.x.x.x or 172.16.x.x)
+                    fallbackIp = ipCandidate
+                }
             }
         }
+        return fallbackIp
     } catch (e: Exception) {
         e.printStackTrace()
     }
